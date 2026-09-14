@@ -116,21 +116,20 @@ weather-data-pipeline/
 - Python 3.11+
 - OpenWeatherMap API key
 
-### 1. Store the API Key
-
-```bash
-aws secretsmanager create-secret \
-  --name openweathermap/api_key \
-  --secret-string '{"api_key":"YOUR_KEY"}'
-```
-
-### 2. Deploy the Infrastructure
+### 1. Deploy the Infrastructure
 
 ```bash
 cd terraform
 
 terraform init
 terraform apply
+```
+### 2. Store the API Key
+
+```bash
+aws secretsmanager create-secret \
+  --name openweathermap/api_key \
+  --secret-string '{"api_key":"YOUR_KEY"}'
 ```
 
 ### 3. Deploy the Application Code
@@ -146,19 +145,18 @@ cd ..
 
 ## Running the Pipeline
 
-### Trigger the Daily Pipeline
-
-```bash
-aws stepfunctions start-execution \
-  --state-machine-arn $(terraform -chdir=terraform output -raw daily_state_machine_arn) \
-  --input '{}'
-```
-
 ### Trigger a Full Reload
 
 ```bash
 aws stepfunctions start-execution \
   --state-machine-arn $(terraform -chdir=terraform output -raw full_reload_state_machine_arn) \
+  --input '{}'
+```
+### Trigger the Daily Pipeline
+
+```bash
+aws stepfunctions start-execution \
+  --state-machine-arn $(terraform -chdir=terraform output -raw daily_state_machine_arn) \
   --input '{}'
 ```
 
@@ -239,7 +237,7 @@ This estimate assumes hourly Lambda ingestion, daily Glue jobs, and occasional A
 Data Engineer
 
 - LinkedIn: <https://linkedin.com/in/anass-lagraini>
-- Email: <mailto:anass.lagraini94@gmail.com>
+- Email: <anass.lagraini94@gmail.com>
 
 ---
 
