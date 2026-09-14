@@ -89,4 +89,4 @@ jobs:
 
       - name: Terraform Plan
         working-directory: terraform
-        run: terraform plan -no-colors
+        run: terraform plan -no-color
