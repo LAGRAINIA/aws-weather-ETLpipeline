@@ -1,0 +1,72 @@
+name: Destroy Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_environment:
+        description: 'Type "dev" to confirm destruction'
+        required: true
+        type: string
+
+env:
+  AWS_REGION: eu-west-1
+  TF_VERSION: 1.6.0
+
+jobs:
+  destroy:
+    name: Destroy AWS resources
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Safety gate — validate confirmation input
+        run: |
+          if [ "${{ github.event.inputs.confirm_environment }}" != "dev" ]; then
+            echo "ERROR: You must type 'dev' to confirm destruction"
+            exit 1
+          fi
+          echo "✅ Destruction confirmed for environment: dev"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Empty S3 bucket first (Terraform can't destroy non-empty buckets)
+        run: |
+          BUCKET=$(cd terraform && terraform output -raw bucket_name 2>/dev/null || echo "")
+          if [ -n "$BUCKET" ]; then
+            echo "Emptying s3://$BUCKET/..."
+            aws s3 rm s3://$BUCKET --recursive || true
+          fi
+
+      - name: Terraform Destroy
+        working-directory: terraform
+        run: terraform destroy -auto-approve
+
+      - name: Force-delete Secrets Manager entry
+        run: |
+          aws secretsmanager delete-secret \
+            --secret-id openweathermap/api_key \
+            --force-delete-without-recovery || true
+
+      - name: Post summary
+        run: |
+          echo "### 🗑️ Infrastructure destroyed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All AWS resources have been removed." >> $GITHUB_STEP_SUMMARY

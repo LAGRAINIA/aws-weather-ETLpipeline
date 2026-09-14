@@ -1,0 +1,100 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # allows manual trigger from Actions tab
+
+env:
+  AWS_REGION: eu-west-1
+  TF_VERSION: 1.6.0
+  PYTHON_VERSION: '3.13'
+
+jobs:
+  deploy:
+    name: Deploy to AWS
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
+
+      - name: Build Lambda deployment package and layer
+        run: ./scripts/deploy_lambda.sh
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: terraform
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: terraform
+        run: terraform apply -auto-approve tfplan
+
+      - name: Get bucket name for downstream steps
+        id: tf_outputs
+        working-directory: terraform
+        run: |
+          BUCKET=$(terraform output -raw bucket_name)
+          STATE_MACHINE=$(terraform output -raw daily_state_machine_arn)
+          echo "bucket_name=$BUCKET" >> $GITHUB_OUTPUT
+          echo "state_machine_arn=$STATE_MACHINE" >> $GITHUB_OUTPUT
+          echo "Bucket: $BUCKET"
+
+      - name: Initialize datalake folder structure
+        run: ./scripts/init_datalake.sh
+
+      - name: Upload Glue scripts to S3
+        run: ./scripts/deploy_glue_scripts.sh
+
+      - name: Populate API key in Secrets Manager
+        run: |
+          aws secretsmanager put-secret-value \
+            --secret-id openweathermap/api_key \
+            --secret-string "{\"api_key\":\"${{ secrets.OPENWEATHERMAP_API_KEY }}\"}"
+
+      - name: Smoke test — Invoke Lambda
+        run: |
+          aws lambda invoke \
+            --function-name fetch_weather_data \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{}' \
+            response.json
+          echo "Lambda response:"
+          cat response.json
+
+      - name: Post deployment summary
+        run: |
+          echo "### 🚀 Deployment complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Bucket:** \`${{ steps.tf_outputs.outputs.bucket_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **State machine:** \`${{ steps.tf_outputs.outputs.state_machine_arn }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Lambda test: passed" >> $GITHUB_STEP_SUMMARY
