@@ -1,0 +1,108 @@
+{
+  "Comment": "Full reload of Silver + Gold from all available Bronze data",
+  "StartAt": "FullReloadBronzeToSilver",
+  "States": {
+    "FullReloadBronzeToSilver": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "weather_bronze_to_silver",
+        "Arguments": {
+          "--bucket": "weather-datalake-yourname",
+          "--processing_date": "all"
+        }
+      },
+      "ResultPath": "$.bronze_result",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 1,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "FullReloadSilverToGold"
+    },
+    "FullReloadSilverToGold": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "weather_silver_to_gold",
+        "Arguments": {
+          "--bucket": "weather-datalake-yourname",
+          "--processing_date": "all"
+        }
+      },
+      "ResultPath": "$.gold_result",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 1,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "UpdateCatalog"
+    },
+    "UpdateCatalog": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+      "Parameters": {
+        "Name": "weather_gold_crawler"
+      },
+      "ResultPath": "$.crawler_result",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "NotifySuccess"
+    },
+    "NotifySuccess": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:eu-west-1:YOUR_ACCOUNT_ID:weather-pipeline-alerts",
+        "Subject": "✅ Weather FULL RELOAD succeeded",
+        "Message": "Full reload of Silver and Gold layers completed successfully. All Bronze data has been reprocessed and the Glue Catalog is refreshed."
+      },
+      "End": true
+    },
+    "NotifyFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:eu-west-1:YOUR_ACCOUNT_ID:weather-pipeline-alerts",
+        "Subject": "❌ Weather FULL RELOAD failed",
+        "Message.$": "States.JsonToString($.error)"
+      },
+      "End": true
+    }
+  }
+}

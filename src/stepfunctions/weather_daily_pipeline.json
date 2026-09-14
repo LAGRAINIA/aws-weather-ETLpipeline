@@ -1,0 +1,116 @@
+{
+  "Comment": "Daily weather ETL pipeline: Bronze → Silver → Gold",
+  "StartAt": "SetProcessingDate",
+  "States": {
+    "SetProcessingDate": {
+      "Type": "Pass",
+      "Parameters": {
+        "processing_date.$": "States.ArrayGetItem(States.StringSplit($$.Execution.StartTime, 'T'), 0)"
+      },
+      "ResultPath": "$.date_info",
+      "Next": "BronzeToSilver"
+    },
+    "BronzeToSilver": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "weather_bronze_to_silver",
+        "Arguments": {
+          "--bucket": "weather-datalake-yourname",
+          "--processing_date.$": "$.date_info.processing_date"
+        }
+      },
+      "ResultPath": "$.bronze_result",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "SilverToGold"
+    },
+    "SilverToGold": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "weather_silver_to_gold",
+        "Arguments": {
+          "--bucket": "weather-datalake-yourname",
+          "--processing_date.$": "$.date_info.processing_date"
+        }
+      },
+      "ResultPath": "$.gold_result",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "UpdateCatalog"
+    },
+    "UpdateCatalog": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+      "Parameters": {
+        "Name": "weather_gold_crawler"
+      },
+      "ResultPath": "$.crawler_result",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "NotifyFailure",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "NotifySuccess"
+    },
+    "NotifySuccess": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:eu-west-1:YOUR_ACCOUNT_ID:weather-pipeline-alerts",
+        "Subject": "✅ Weather pipeline succeeded",
+        "Message.$": "States.Format('Pipeline completed successfully for date {}', $.date_info.processing_date)"
+      },
+      "End": true
+    },
+    "NotifyFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:eu-west-1:YOUR_ACCOUNT_ID:weather-pipeline-alerts",
+        "Subject": "❌ Weather pipeline failed",
+        "Message.$": "States.JsonToString($.error)"
+      },
+      "End": true
+    }
+  }
+}
