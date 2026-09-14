@@ -1,121 +1,248 @@
 # AWS Weather Data Pipeline
 
-A production-style serverless ETL pipeline on AWS that ingests weather data from a public API, transforms it through a medallion architecture (Bronze → Silver → Gold), and exposes it for analytics.
+> A production-style serverless ETL pipeline on AWS that ingests weather data from the OpenWeatherMap API, processes it through a **Bronze → Silver → Gold** Medallion architecture, and exposes curated datasets for analytics with Amazon Athena.
+
+![AWS](https://img.shields.io/badge/AWS-Serverless-orange)
+![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC)
+![Spark](https://img.shields.io/badge/Apache-Spark-E25A1C)
+![Athena](https://img.shields.io/badge/Amazon-Athena-232F3E)
+![License](https://img.shields.io/badge/License-MIT-green)
+
+---
 
 ## Architecture
 
 ![Architecture](docs/architecture.png)
 
+### End-to-End Data Flow
+
+```text
+EventBridge
+     │
+     ▼
+AWS Lambda (20 cities)
+     │
+     ▼
+S3 Bronze (Raw JSON)
+     │
+     ▼
+Glue Job (Bronze → Silver)
+     │
+     ▼
+S3 Silver (Clean Parquet)
+     │
+     ▼
+Glue Job (Silver → Gold)
+     │
+     ▼
+S3 Gold (Business Tables)
+     │
+     ▼
+Athena Analytics
+```
+
+The pipeline runs automatically every hour, storing raw weather observations in the Bronze layer before progressively transforming them into analytics-ready datasets.
+
+---
+
 ## Tech Stack
 
-**Compute & Orchestration**
+### Compute & Orchestration
+
 - AWS Lambda — event-driven ingestion
 - AWS Glue Spark Jobs — distributed transformations
-- AWS Step Functions — pipeline orchestration
+- AWS Step Functions — workflow orchestration
 - Amazon EventBridge — scheduled triggers
 
-**Storage & Catalog**
-- Amazon S3 — data lake (Bronze/Silver/Gold layers)
-- AWS Glue Data Catalog — metadata
-- AWS Glue Crawlers — schema discovery
+### Storage & Catalog
 
-**Query & Consumption**
-- Amazon Athena — SQL over S3
+- Amazon S3 — Bronze, Silver and Gold data lake
+- AWS Glue Data Catalog — metadata management
+- AWS Glue Crawlers — automatic schema discovery
 
-**Security & Observability**
+### Analytics
+
+- Amazon Athena — SQL queries directly on S3
+
+### Security & Observability
+
 - AWS Secrets Manager — API key storage
-- Amazon CloudWatch — logs, metrics, dashboards
-- Amazon SNS — alerting
-- AWS IAM — dedicated role per service
+- Amazon CloudWatch — logs, metrics and dashboards
+- Amazon SNS — success and failure alerts
+- AWS IAM — least-privilege service roles
+
+---
 
 ## Key Features
 
-- **Event-driven ingestion** — Lambda pulls 20 European cities every hour from OpenWeatherMap
-- **Medallion architecture** — Bronze (raw JSON) → Silver (typed & deduped Parquet) → Gold (business marts)
-- **Idempotent incremental writes** — dynamic partition overwrite preserves history on reruns
-- **Full-reload support** — same jobs handle both daily incremental (`--processing_date=2026-09-14`) and full backfill (`--processing_date=all`)
-- **Automatic alerting** — SNS notifications on success and failure
-- **Dual pipelines** — daily incremental + on-demand full reload, sharing the same underlying jobs
+- **Hourly event-driven ingestion** for 20 European cities
+- **Bronze → Silver → Gold** Medallion architecture
+- **Parallel API requests** using Python's `ThreadPoolExecutor`
+- **Incremental idempotent processing** with dynamic partition overwrite
+- **Full reload support** using `--processing_date=all`
+- **Automatic SNS notifications** on success and failure
+- **Infrastructure as Code** with Terraform
+- **Athena-ready Parquet datasets** optimized for analytics
 
-## Project Structure
+---
 
-`​``
-src/
-├── lambda/       # ingestion Lambda
-└── glue/         # transformation Spark scripts
-stepfunctions/    # orchestration state machines
-athena/           # DDL and analytical queries
-terraform/        # infrastructure as code
-`​``
+## Repository Structure
+
+```text
+weather-data-pipeline/
+├── src/
+│   ├── lambda/
+│   └── glue/
+├── stepfunctions/
+├── terraform/
+│   ├── modules/
+│   └── main.tf
+├── athena/
+├── scripts/
+├── docs/
+│   ├── architecture.png
+│   └── screenshots/
+└── README.md
+```
+
+---
 
 ## Quick Start
 
 ### Prerequisites
 
-- AWS CLI configured with sufficient permissions
-- Terraform >= 1.5
+- AWS CLI configured with appropriate permissions
+- Terraform ≥ 1.5
 - Python 3.11+
-- An OpenWeatherMap API key (free at https://openweathermap.org/api)
+- OpenWeatherMap API key
 
-### Deploy
+### 1. Store the API Key
 
-`​``bash
-# 1. Store your API key in Secrets Manager
+```bash
 aws secretsmanager create-secret \
-    --name openweathermap/api_key \
-    --secret-string '{"api_key":"YOUR_KEY"}'
+  --name openweathermap/api_key \
+  --secret-string '{"api_key":"YOUR_KEY"}'
+```
 
-# 2. Deploy infrastructure with Terraform
+### 2. Deploy the Infrastructure
+
+```bash
 cd terraform
+
 terraform init
 terraform apply
+```
 
-# 3. Upload Glue scripts and Lambda code
+### 3. Deploy the Application Code
+
+```bash
 cd ..
+
 ./scripts/deploy_glue_scripts.sh
 ./scripts/deploy_lambda.sh
-`​``
+```
 
-### Test
+---
 
-`​``bash
-# Trigger the daily pipeline manually
+## Running the Pipeline
+
+### Trigger the Daily Pipeline
+
+```bash
 aws stepfunctions start-execution \
-    --state-machine-arn $(terraform -chdir=terraform output -raw daily_state_machine_arn) \
-    --input '{}'
+  --state-machine-arn $(terraform -chdir=terraform output -raw daily_state_machine_arn) \
+  --input '{}'
+```
 
-# Query the results
-aws athena start-query-execution \
-    --query-string "SELECT date, COUNT(*) FROM weather_analytics.city_daily_stats GROUP BY date"
-`​``
+### Trigger a Full Reload
 
-## Data Quality
+```bash
+aws stepfunctions start-execution \
+  --state-machine-arn $(terraform -chdir=terraform output -raw full_reload_state_machine_arn) \
+  --input '{}'
+```
 
-Each Glue job includes:
-- Physical plausibility filters (temperature -50 to 60°C, humidity 0-100%)
-- Deduplication by `city + hour` keeping the latest ingestion
-- Null-safety on critical columns
+---
 
-## Cost
+## Querying with Athena
 
-Running the full pipeline (hourly Lambda + daily Glue + queries) costs less than **$5/month** at current AWS pricing.
+Example analytical query:
+
+```sql
+SELECT
+    date,
+    COUNT(*) AS records
+FROM weather_analytics.city_daily_stats
+GROUP BY date
+ORDER BY date DESC;
+```
+
+---
+
+## Data Quality Controls
+
+The Spark transformations enforce several validation rules before promoting data.
+
+| Validation | Purpose |
+|------------|---------|
+| Temperature between **-50°C and 60°C** | Remove implausible values |
+| Humidity between **0% and 100%** | Validate sensor data |
+| Deduplication by **city + hour** | Keep the latest ingestion |
+| Null safety | Preserve critical fields |
+
+---
+
+## Monitoring & Alerting
+
+The pipeline includes built-in operational monitoring.
+
+- CloudWatch logs, metrics and dashboards
+- Step Functions execution tracking
+- SNS notifications for successful and failed executions
+
+---
+
+## Cost Estimate
+
+| Service | Estimated Monthly Cost |
+|----------|-------------------------|
+| Lambda | Minimal |
+| Glue | Low |
+| S3 | Minimal |
+| Athena | Pay-per-query |
+| **Total** | **Under $5/month** |
+
+This estimate assumes hourly Lambda ingestion, daily Glue jobs, and occasional Athena queries.
+
+---
 
 ## Screenshots
 
-### Glue Studio Dashboard
-![Dashboard](docs/screenshots/cloudwatch-dashboard.png)
+### CloudWatch Dashboard
+
+![CloudWatch Dashboard](docs/screenshots/cloudwatch-dashboard.png)
 
 ### Step Functions Execution
-![Success](docs/screenshots/step-functions-success.png)
 
-### Athena Query
-![Athena](docs/screenshots/athena-query.png)
+![Step Functions Success](docs/screenshots/step-functions-success.png)
+
+### Athena Query Results
+
+![Athena Query](docs/screenshots/athena-query.png)
+
+---
 
 ## Author
 
-**Anass Lagraini** — Data Engineer
-[LinkedIn](https://linkedin.com/in/anass-lagraini) | [Email](mailto:anass.lagraini94@gmail.com)
+**Anass Lagraini**
+
+Data Engineer
+
+- LinkedIn: <https://linkedin.com/in/anass-lagraini>
+- Email: <mailto:anass.lagraini94@gmail.com>
+
+---
 
 ## License
 
-MIT
+This project is released under the **MIT License**.
