@@ -10,7 +10,7 @@ on:
 
 env:
   AWS_REGION: eu-west-1
-  TF_VERSION: 1.6.0
+  TF_VERSION: 1.9.8
 
 jobs:
   destroy:

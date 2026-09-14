@@ -7,7 +7,7 @@ on:
 
 env:
   AWS_REGION: eu-west-1
-  TF_VERSION: 1.6.0
+  TF_VERSION: 1.9.8
   PYTHON_VERSION: '3.13'
 
 jobs:
@@ -17,6 +17,12 @@ jobs:
     permissions:
       id-token: write
       contents: read
+
+    env:
+      TF_VAR_alert_email: anass.lagraini94@gmail.com
+      TF_VAR_project_name: weather-datalake-anass
+      TF_VAR_environment: dev
+      TF_VAR_region: eu-west-1
 
     steps:
       - name: Checkout code

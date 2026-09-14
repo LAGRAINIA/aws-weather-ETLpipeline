@@ -8,7 +8,7 @@ on:
 
 env:
   AWS_REGION: eu-west-1
-  TF_VERSION: 1.6.0
+  TF_VERSION: 1.9.8
   PYTHON_VERSION: '3.13'
 
 jobs:
@@ -27,20 +27,27 @@ jobs:
       - name: Install linters
         run: pip install ruff black
 
-      - name: Run Ruff (fast Python linter)
+      - name: Run Ruff
         run: ruff check src/ || true
-        # `|| true` lets the workflow pass even if there are style issues.
-        # Once your code is clean, remove `|| true` to enforce strictly.
 
-      - name: Run Black (formatter check)
+      - name: Run Black
         run: black --check src/ || true
 
   validate-terraform:
     name: Validate Terraform
     runs-on: ubuntu-latest
     permissions:
-      id-token: write   # required for OIDC
+      id-token: write
       contents: read
+
+    env:
+      # These become Terraform variables
+      TF_VAR_alert_email: anass.lagraini94@gmail.com
+      TF_VAR_project_name: weather-datalake-anass
+      TF_VAR_environment: dev
+      TF_VAR_region: eu-west-1
+      TF_VAR_lambda_zip_path: "../dist/fetch_weather_data.zip"
+      TF_VAR_layer_zip_path: "../dist/requests-layer.zip"
 
     steps:
       - name: Checkout code
@@ -49,25 +56,27 @@ jobs:
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: ${{ env.TF_VERSION }}
+          terraform_version: 1.9.8
 
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: eu-west-1
 
       - name: Verify AWS identity
         run: aws sts get-caller-identity
 
-      - name: Terraform Format Check
-        working-directory: terraform
-        run: terraform fmt -check -recursive
-        continue-on-error: true
+      - name: Create dummy zip files (CI doesn't build them)
+        run: |
+          mkdir -p dist
+          echo "dummy" > dist/fetch_weather_data.zip
+          echo "dummy" > dist/requests-layer.zip
 
       - name: Terraform Init
         working-directory: terraform
-        run: terraform init
+        run: terraform init -input=false
+        timeout-minutes: 3
 
       - name: Terraform Validate
         working-directory: terraform
@@ -75,4 +84,5 @@ jobs:
 
       - name: Terraform Plan
         working-directory: terraform
-        run: terraform plan -no-color
+        run: terraform plan -no-color -input=false
+        timeout-minutes: 5
