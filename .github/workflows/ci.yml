@@ -27,24 +27,38 @@ jobs:
       - name: Install linters
         run: pip install ruff black
 
-      - name: Run Ruff (fast Python linter)
+      - name: Run Ruff
         run: ruff check src/ || true
-        # `|| true` lets the workflow pass even if there are style issues.
-        # Once your code is clean, remove `|| true` to enforce strictly.
 
-      - name: Run Black (formatter check)
+      - name: Run Black
         run: black --check src/ || true
 
   validate-terraform:
     name: Validate Terraform
     runs-on: ubuntu-latest
     permissions:
-      id-token: write   # required for OIDC
+      id-token: write
       contents: read
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Show OIDC token subject
+        run: |
+          IDTOKEN=$(curl -sS \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" \
+            | jq -r .value)
+          echo "===== FULL OIDC CLAIMS ====="
+          echo "$IDTOKEN" | cut -d'.' -f2 | base64 -d 2>/dev/null | python3 -m json.tool
+
+      - name: Show role ARN being used (first 40 chars)
+        run: |
+          ARN='${{ secrets.AWS_DEPLOY_ROLE_ARN }}'
+          echo "ARN length: ${#ARN}"
+          echo "ARN starts with: ${ARN:0:40}"
+          echo "ARN ends with: ${ARN: -30}"
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
@@ -75,4 +89,4 @@ jobs:
 
       - name: Terraform Plan
         working-directory: terraform
-        run: terraform plan -no-color
+        run: terraform plan -no-colors
