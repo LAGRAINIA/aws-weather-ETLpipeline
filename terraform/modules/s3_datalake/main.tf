@@ -1,5 +1,6 @@
 resource "aws_s3_bucket" "datalake" {
   bucket = var.bucket_name
+  force_destroy = true 
 }
 
 resource "aws_s3_bucket_versioning" "datalake" {

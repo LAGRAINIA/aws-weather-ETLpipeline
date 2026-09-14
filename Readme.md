@@ -117,6 +117,11 @@ weather-data-pipeline/
 - OpenWeatherMap API key
 
 ### 1. Build the Lambda deployment package + layer
+
+```bash
+chmod +x scripts/*.sh
+```
+s
 ```bash
 ./scripts/deploy_lambda.sh
 ```
@@ -130,6 +135,7 @@ cd ..
 ```
 
 ### 3. Initialize the S3 datalake folder structure
+
 ```bash
 ./scripts/init_datalake.sh
 ```
