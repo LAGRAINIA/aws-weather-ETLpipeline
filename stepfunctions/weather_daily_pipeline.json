@@ -16,7 +16,7 @@
       "Parameters": {
         "JobName": "weather_bronze_to_silver",
         "Arguments": {
-          "--bucket": "weather-datalake-yourname",
+          "--bucket": "${bucket_name}",
           "--processing_date.$": "$.date_info.processing_date"
         }
       },
@@ -48,7 +48,7 @@
       "Parameters": {
         "JobName": "weather_silver_to_gold",
         "Arguments": {
-          "--bucket": "weather-datalake-yourname",
+          "--bucket": "${bucket_name}",
           "--processing_date.$": "$.date_info.processing_date"
         }
       },
@@ -96,7 +96,7 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::sns:publish",
       "Parameters": {
-        "TopicArn": "arn:aws:sns:eu-west-1:YOUR_ACCOUNT_ID:weather-pipeline-alerts",
+        "TopicArn":  "${sns_topic_arn}",
         "Subject": "✅ Weather pipeline succeeded",
         "Message.$": "States.Format('Pipeline completed successfully for date {}', $.date_info.processing_date)"
       },
@@ -106,7 +106,7 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::sns:publish",
       "Parameters": {
-        "TopicArn": "arn:aws:sns:eu-west-1:YOUR_ACCOUNT_ID:weather-pipeline-alerts",
+        "TopicArn": "${sns_topic_arn}",
         "Subject": "❌ Weather pipeline failed",
         "Message.$": "States.JsonToString($.error)"
       },

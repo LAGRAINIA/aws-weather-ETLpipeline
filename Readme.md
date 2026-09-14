@@ -102,7 +102,7 @@ Running the full pipeline (hourly Lambda + daily Glue + queries) costs less than
 
 ## Screenshots
 
-### CloudWatch Dashboard
+### Glue Studio Dashboard
 ![Dashboard](docs/screenshots/cloudwatch-dashboard.png)
 
 ### Step Functions Execution

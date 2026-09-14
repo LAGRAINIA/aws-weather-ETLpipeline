@@ -8,7 +8,7 @@
       "Parameters": {
         "JobName": "weather_bronze_to_silver",
         "Arguments": {
-          "--bucket": "weather-datalake-yourname",
+          "--bucket": "${bucket_name}",
           "--processing_date": "all"
         }
       },
@@ -40,7 +40,7 @@
       "Parameters": {
         "JobName": "weather_silver_to_gold",
         "Arguments": {
-          "--bucket": "weather-datalake-yourname",
+          "--bucket": "${bucket_name}",
           "--processing_date": "all"
         }
       },
@@ -88,7 +88,7 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::sns:publish",
       "Parameters": {
-        "TopicArn": "arn:aws:sns:eu-west-1:YOUR_ACCOUNT_ID:weather-pipeline-alerts",
+        "TopicArn": "${sns_topic_arn}",
         "Subject": "✅ Weather FULL RELOAD succeeded",
         "Message": "Full reload of Silver and Gold layers completed successfully. All Bronze data has been reprocessed and the Glue Catalog is refreshed."
       },
@@ -98,7 +98,7 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::sns:publish",
       "Parameters": {
-        "TopicArn": "arn:aws:sns:eu-west-1:YOUR_ACCOUNT_ID:weather-pipeline-alerts",
+        "TopicArn": "${sns_topic_arn}",
         "Subject": "❌ Weather FULL RELOAD failed",
         "Message.$": "States.JsonToString($.error)"
       },
