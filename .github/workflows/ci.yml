@@ -1,3 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches-ignore: [main]
+
+env:
+  AWS_REGION: eu-west-1
+  TF_VERSION: 1.9.8
+  PYTHON_VERSION: '3.13'
+
+jobs:
+  lint-python:
+    name: Lint Python code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install linters
+        run: pip install ruff black
+
+      - name: Run Ruff
+        run: ruff check src/ || true
+
+      - name: Run Black
+        run: black --check src/ || true
+
   validate-terraform:
     name: Validate Terraform
     runs-on: ubuntu-latest

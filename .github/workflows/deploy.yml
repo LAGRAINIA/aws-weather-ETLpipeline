@@ -18,6 +18,12 @@ jobs:
       id-token: write
       contents: read
 
+    env:
+      TF_VAR_alert_email: anass.lagraini94@gmail.com
+      TF_VAR_project_name: weather-datalake-anass
+      TF_VAR_environment: dev
+      TF_VAR_region: eu-west-1
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
