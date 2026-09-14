@@ -116,30 +116,47 @@ weather-data-pipeline/
 - Python 3.11+
 - OpenWeatherMap API key
 
-### 1. Deploy the Infrastructure
-
+# 1. Build the Lambda deployment package + layer
 ```bash
-cd terraform
-
-terraform init
-terraform apply
-```
-### 2. Store the API Key
-
-```bash
-aws secretsmanager create-secret \
-  --name openweathermap/api_key \
-  --secret-string '{"api_key":"YOUR_KEY"}'
-```
-
-### 3. Deploy the Application Code
-
-```bash
-cd ..
-
-./scripts/deploy_glue_scripts.sh
 ./scripts/deploy_lambda.sh
 ```
+
+# 2. Deploy infrastructure
+```bash
+cd terraform
+terraform init
+terraform apply
+cd ..
+```
+
+# 3. Initialize the S3 datalake folder structure
+```bash
+./scripts/init_datalake.sh
+```
+
+# 4. Upload the Glue scripts
+```bash
+./scripts/deploy_glue_scripts.sh
+```
+# 5. Populate the API key in Secrets Manager (one-time)
+```bash
+aws secretsmanager put-secret-value \
+    --secret-id openweathermap/api_key \
+    --secret-string '{"api_key":"YOUR_KEY"}'
+```
+# 6. Confirm the SNS email subscription (check your inbox)
+
+# 7. Test end-to-end
+```bash
+aws lambda invoke \
+    --function-name fetch_weather_data \
+    --cli-binary-format raw-in-base64-out \
+    --payload '{}' \
+    /tmp/response.json && cat /tmp/response.json
+```
+
+
+
 
 ---
 
