@@ -34,3 +34,4 @@ Thumbs.db
 
 # Sensitive
 secrets.json
+github-actions-trust-policy.json
