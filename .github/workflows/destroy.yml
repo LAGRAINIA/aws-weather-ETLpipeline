@@ -19,12 +19,14 @@ jobs:
     permissions:
       id-token: write
       contents: read
-  
+
     env:
-      TF_VAR_alert_email: anass.lagraini94@gmail.com
+      TF_VAR_alert_email: your-email@example.com
       TF_VAR_project_name: weather-datalake-anass
       TF_VAR_environment: dev
       TF_VAR_region: eu-west-1
+      TF_VAR_lambda_zip_path: "../dist/fetch_weather_data.zip"
+      TF_VAR_layer_zip_path: "../dist/requests-layer.zip"
 
     steps:
       - name: Safety gate — validate confirmation input
@@ -33,10 +35,16 @@ jobs:
             echo "ERROR: You must type 'dev' to confirm destruction"
             exit 1
           fi
-          echo "✅ Destruction confirmed for environment: dev"
+          echo "✓ Destruction confirmed for environment: dev"
 
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Create dummy zip files (destroy doesn't need real ones)
+        run: |
+          mkdir -p dist
+          echo "dummy" > dist/fetch_weather_data.zip
+          echo "dummy" > dist/requests-layer.zip
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
@@ -51,28 +59,42 @@ jobs:
 
       - name: Terraform Init
         working-directory: terraform
-        run: terraform init
+        run: terraform init -input=false
+        timeout-minutes: 3
 
-      - name: Empty S3 bucket first (Terraform can't destroy non-empty buckets)
+      - name: Empty S3 bucket (Terraform can't destroy non-empty buckets)
         run: |
           BUCKET=$(cd terraform && terraform output -raw bucket_name 2>/dev/null || echo "")
           if [ -n "$BUCKET" ]; then
             echo "Emptying s3://$BUCKET/..."
             aws s3 rm s3://$BUCKET --recursive || true
+            
+            # Handle versioned bucket cleanup
+            aws s3api delete-objects --bucket "$BUCKET" \
+              --delete "$(aws s3api list-object-versions --bucket "$BUCKET" \
+              --query='{Objects: Versions[].{Key:Key,VersionId:VersionId}}' \
+              --output json 2>/dev/null)" 2>/dev/null || true
+            
+            aws s3api delete-objects --bucket "$BUCKET" \
+              --delete "$(aws s3api list-object-versions --bucket "$BUCKET" \
+              --query='{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' \
+              --output json 2>/dev/null)" 2>/dev/null || true
+          else
+            echo "No bucket found in state — nothing to empty"
           fi
 
       - name: Terraform Destroy
         working-directory: terraform
-        run: terraform destroy -auto-approve
+        run: terraform destroy -auto-approve -input=false
+        timeout-minutes: 15
 
       - name: Force-delete Secrets Manager entry
         run: |
           aws secretsmanager delete-secret \
             --secret-id openweathermap/api_key \
-            --force-delete-without-recovery || true
+            --force-delete-without-recovery 2>/dev/null || true
 
       - name: Post summary
         run: |
-          echo "### 🗑️ Infrastructure destroyed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Infrastructure destroyed" >> $GITHUB_STEP_SUMMARY
           echo "All AWS resources have been removed." >> $GITHUB_STEP_SUMMARY

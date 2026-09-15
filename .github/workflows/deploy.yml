@@ -61,7 +61,18 @@ jobs:
         working-directory: terraform
         run: terraform plan -out=tfplan
 
-      - name: Terraform Apply
+      - name: Create secret first
+        run: |
+          cd terraform
+          terraform apply -target=module.secrets -auto-approve
+          
+      - name: Populate API key in Secrets Manager
+        run: |
+          aws secretsmanager put-secret-value \
+            --secret-id openweathermap/api_key \
+            --secret-string "{\"api_key\":\"${{ secrets.OPENWEATHERMAP_API_KEY }}\"}"
+
+      - name: Create everything else
         working-directory: terraform
         run: terraform apply -auto-approve tfplan
 
@@ -80,12 +91,6 @@ jobs:
 
       - name: Upload Glue scripts to S3
         run: ./scripts/deploy_glue_scripts.sh
-
-      - name: Populate API key in Secrets Manager
-        run: |
-          aws secretsmanager put-secret-value \
-            --secret-id openweathermap/api_key \
-            --secret-string "{\"api_key\":\"${{ secrets.OPENWEATHERMAP_API_KEY }}\"}"
 
       - name: Smoke test — Invoke Lambda
         run: |
